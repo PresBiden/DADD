@@ -1,0 +1,83 @@
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import requests
+from textblob import TextBlob
+from pymongo import MongoClient
+import ccxt.async_support as ccxt  # Use async version
+import asyncio
+import aiohttp
+from dotenv import load_dotenv
+import os
+import logging
+from datetime import datetime, timedelta
+import websockets
+import json
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import classification_report
+from collections import deque
+from threading import Lock
+import backtrader as bt
+import redis
+import pandas_ta as ta  # Technical Analysis library
+
+# Load environment variables
+load_dotenv()
+MONGODB_URI = os.getenv("MONGODB_URI")
+TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
+
+# Logging setup
+logging.basicConfig(filename='crypto_bot.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Database connection
+client = MongoClient(MONGODB_URI)
+db = client['crypto_database']
+
+# Global variables
+update_queue = {}
+update_locks = {}
+coin_symbols = ["OMI"]
+exchange_list = [ccxt.binance(), ccxt.kucoin()]
+
+# Redis cache
+r = redis.Redis(host='localhost', port=6379, db=0)
+
+# --- Helper Functions ---
+
+async def fetch_market_data_async(coin_symbol, exchange, timeframe='1d', limit=365):
+    try:
+        # Fetch historical OHLCV data (optimize: store in cache)
+        cache_key = f"{coin_symbol}_{exchange.name}_{timeframe}_{limit}"
+        cached_data = r.get(cache_key)
+        if cached_data:
+            ohlcv = pd.read_json(cached_data, orient='split')
+        else:
+            ohlcv = await exchange.fetch_ohlcv(f"{coin_symbol}/USDT", timeframe=timeframe, limit=limit)
+            r.set(cache_key, ohlcv.to_json(orient='split'), ex=3600)  # Cache for 1 hour
+
+        # Fetch real-time data using ccxt
+        order_book = await exchange.fetch_order_book(f"{coin_symbol}/USDT")
+        return ohlcv, order_book
+    except Exception as e:
+        logging.error(f"Error fetching data for {coin_symbol} from {exchange.name}: {e}")
+        return None, None
+
+# ... (Other functions for sentiment, on-chain analysis, machine learning, backtesting)
+
+async def analyze_coin(coin_name):
+    # ... (Fetch data from queue)
+
+    # Technical Analysis (improved)
+    for data in latest_data:
+        ohlcv = pd.DataFrame(data['data'], columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        ohlcv['timestamp'] = pd.to_datetime(ohlcv['timestamp'], unit='ms')
+        ohlcv.set_index('timestamp', inplace=True)
+        ohlcv.ta.strategy("All") # Use pandas_ta for comprehensive TA
+        # ... (Further analysis and feature engineering using the technical indicators)
+
+    # ... (Fundamental, sentiment, on-chain analysis)
+    # ... (Machine learning prediction with hyperparameter tuning)
+    # ... (Store results in MongoDB)
+
+# ... (Main function for running the bot)
